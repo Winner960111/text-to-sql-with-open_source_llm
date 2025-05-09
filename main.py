@@ -1,0 +1,54 @@
+from langchain_community.utilities import SQLDatabase
+from langchain_community.llms import LlamaCpp
+from sqlalchemy import create_engine, inspect
+
+# 1. Connect to Postgres and load schema
+# db_uri = "postgresql://postgres:postgres@localhost:5432/test"
+# db = SQLDatabase.from_uri(db_uri, include_tables=["drill_string","lost_time", "operations", "personnel", "reports"])  # include_tables limits scope
+# schema_str = db.get_table_info()  # returns DDL-like table/column info:contentReference[oaicite:5]{index=5}
+
+engine = create_engine("postgresql://postgres:postgres@localhost:5432/test")
+inspector = inspect(engine)
+
+table_names = inspector.get_table_names()
+schema_str = ""
+for table in table_names:
+    # Get columns for each table
+    columns = inspector.get_columns(table)
+    # Format as "col (type)" strings
+    cols_info = ", ".join(f"{col['name']} ({col['type']})" for col in columns)
+    schema_str += f"Table {table}: {cols_info}\n\n"
+
+# 2. Initialize the SQLCoder model via llama.cpp (QuantFactory GGUF)
+model_path = "sqlcoder-7b-2.Q4_K_M.gguf"
+llm = LlamaCpp(
+    model_path=f'./workspace/model_path',  # Adjust path if needed
+    temperature=0,
+    n_ctx=8000,
+    n_threads=8,
+    n_gpu_layers=40,  # Optional, use if you want some layers on GPU
+    verbose=True
+)
+
+def nl_to_sql(question: str) -> str:
+    # 3. Build prompt with schema and question tags
+    prompt = f"""### Task
+Generate a SQL query to answer [QUESTION]{question}[/QUESTION]
+
+### Database Schema
+The query will run on a database with the following schema:
+{schema_str}
+
+### Answer
+Given the database schema, here is the SQL query that [QUESTION]{question}[/QUESTION]
+[SQL]"""
+    # 4. Query the model (deterministic decoding recommended):contentReference[oaicite:8]{index=8}
+    result = llm.invoke([{"role": "system", "content": ""}, {"role": "user", "content": prompt}],
+                        stop=["</s>"])  # stop at end-of-sequence token
+    sql_query = result['choices'][0]['message']['content'].strip()
+    return sql_query
+
+# Example usage:
+user_q = "How many active rigs does every drilling contractor have?"
+sql = nl_to_sql(user_q)
+print(sql)  # prints only the generated SQL query
