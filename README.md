@@ -5,3 +5,7 @@ Beside the previous way for this, I used open source LLM model here so keep the 
 ## 1. choose the best open source model.
 ## 2. making a python script.
 ## 3. Run the script on GPU method for faster.
+
+## stack
+
+#python#text to sql#open source llm#query#flask
